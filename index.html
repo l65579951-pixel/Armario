@@ -1,15 +1,15 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  Plus, Edit2, Trash2, GripVertical, Settings, Image as ImageIcon, 
-  X, Check, Eye, EyeOff, Search, Heart, Copy, ArrowUp, ArrowDown
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Plus, Edit2, Trash2, GripVertical, Settings, Image as ImageIcon,
+  X, Check, Eye, EyeOff, Search, Copy, ArrowUp, ArrowDown
 } from 'lucide-react';
 
 // Firebase Imports (Mandatory as per instructions)
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { 
-  getFirestore, collection, doc, setDoc, deleteDoc, 
-  onSnapshot, addDoc, updateDoc 
+import {
+  getFirestore, collection, doc, setDoc, deleteDoc,
+  onSnapshot, addDoc, updateDoc
 } from 'firebase/firestore';
 
 // 1. Initialize Firebase outside component
@@ -60,40 +60,69 @@ const THEMES = {
   }
 };
 
+const safeText = (value, fallback = '') => {
+  if (typeof value === 'string') return value.trim() || fallback;
+  if (value == null) return fallback;
+  return String(value);
+};
+
+const normalizeWardrobeItem = (item) => ({
+  ...item,
+  id: item.id,
+  name: safeText(item.name, 'Prenda sin nombre'),
+  category: safeText(item.category, 'Otros'),
+  image: item.image || ''
+});
+
+const normalizeOutfit = (outfit) => ({
+  ...outfit,
+  id: outfit.id,
+  name: safeText(outfit.name, 'Mi Look'),
+  dayId: outfit.dayId || 'monday',
+  items: Array.isArray(outfit.items) ? outfit.items : [],
+  order: Number.isFinite(outfit.order) ? outfit.order : 0
+});
+
 // Compresses image to base64 to fit safely within Firestore 1MB document limit
 const compressImage = (file) => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = (event) => {
       const img = new Image();
       img.src = event.target.result;
       img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 400; // Small size for fast loading and low storage
-        let width = img.width;
-        let height = img.height;
-        
-        if (width > MAX_WIDTH) {
-          height = Math.round((height * MAX_WIDTH) / width);
-          width = MAX_WIDTH;
+        try {
+          const canvas = document.createElement('canvas');
+          const MAX_WIDTH = 400; // Small size for fast loading and low storage
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH) {
+            height = Math.round((height * MAX_WIDTH) / width);
+            width = MAX_WIDTH;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Canvas no disponible'));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
+        } catch (error) {
+          reject(error);
         }
-        
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.8));
       };
+      reader.onerror = () => reject(new Error('No se pudo leer la imagen'));
     };
   });
 };
 
 export default function WeeklyOutfitPlanner() {
-  // Auth State
   const [user, setUser] = useState(null);
-  
-  // Data State
   const [wardrobe, setWardrobe] = useState([]);
   const [outfits, setOutfits] = useState([]);
   const [settings, setSettings] = useState({
@@ -102,20 +131,16 @@ export default function WeeklyOutfitPlanner() {
     customDayNames: {}
   });
 
-  // UI State
   const [isPreviewMode, setIsPreviewMode] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isWardrobeOpenMobile, setIsWardrobeOpenMobile] = useState(false);
-  
-  // Modals State
-  const [editingOutfit, setEditingOutfit] = useState(null); // { dayId, outfitId (optional) }
+
+  const [editingOutfit, setEditingOutfit] = useState(null);
   const [isAddingGarment, setIsAddingGarment] = useState(false);
-  
-  // Wardrobe Filters
+
   const [wardrobeSearch, setWardrobeSearch] = useState('');
   const [wardrobeCategoryFilter, setWardrobeCategoryFilter] = useState('All');
 
-  // Drag & Drop State for outfits reordering
   const [draggedOutfitId, setDraggedOutfitId] = useState(null);
 
   useEffect(() => {
@@ -127,11 +152,11 @@ export default function WeeklyOutfitPlanner() {
           await signInAnonymously(auth);
         }
       } catch (error) {
-        console.error("Auth error:", error);
+        console.error('Auth error:', error);
       }
     };
     initAuth();
-    
+
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
@@ -140,29 +165,25 @@ export default function WeeklyOutfitPlanner() {
     if (!user) return;
     const userId = user.uid;
 
-    // Listen to Wardrobe
     const wardrobeRef = collection(db, 'artifacts', appId, 'users', userId, 'wardrobe');
     const unsubWardrobe = onSnapshot(wardrobeRef, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      // Sort by newest first typically
-      setWardrobe(items.sort((a, b) => b.createdAt - a.createdAt));
-    }, (error) => console.error("Wardrobe fetch error:", error));
+      const items = snapshot.docs.map(doc => normalizeWardrobeItem({ id: doc.id, ...doc.data() }));
+      setWardrobe(items.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+    }, (error) => console.error('Wardrobe fetch error:', error));
 
-    // Listen to Outfits
     const outfitsRef = collection(db, 'artifacts', appId, 'users', userId, 'outfits');
     const unsubOutfits = onSnapshot(outfitsRef, (snapshot) => {
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const items = snapshot.docs.map(doc => normalizeOutfit({ id: doc.id, ...doc.data() }));
       setOutfits(items);
-    }, (error) => console.error("Outfits fetch error:", error));
+    }, (error) => console.error('Outfits fetch error:', error));
 
-    // Listen to Settings
     const settingsRef = collection(db, 'artifacts', appId, 'users', userId, 'settings');
     const unsubSettings = onSnapshot(settingsRef, (snapshot) => {
       const settingsDoc = snapshot.docs.find(d => d.id === 'main');
       if (settingsDoc) {
         setSettings(prev => ({ ...prev, ...settingsDoc.data() }));
       }
-    }, (error) => console.error("Settings fetch error:", error));
+    }, (error) => console.error('Settings fetch error:', error));
 
     return () => {
       unsubWardrobe();
@@ -174,13 +195,13 @@ export default function WeeklyOutfitPlanner() {
   const saveSetting = async (key, value) => {
     if (!user) return;
     const newSettings = { ...settings, [key]: value };
-    setSettings(newSettings); // Optimistic UI
-    
+    setSettings(newSettings);
+
     try {
       const settingsRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'main');
       await setDoc(settingsRef, newSettings, { merge: true });
     } catch (e) {
-      console.error("Error saving setting:", e);
+      console.error('Error saving setting:', e);
     }
   };
 
@@ -189,12 +210,12 @@ export default function WeeklyOutfitPlanner() {
     try {
       const collectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'wardrobe');
       await addDoc(collectionRef, {
-        ...garmentData,
+        ...normalizeWardrobeItem(garmentData),
         createdAt: Date.now()
       });
       setIsAddingGarment(false);
     } catch (e) {
-      console.error("Error adding garment:", e);
+      console.error('Error adding garment:', e);
     }
   };
 
@@ -204,32 +225,33 @@ export default function WeeklyOutfitPlanner() {
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'wardrobe', id));
     } catch (e) {
-      console.error("Error deleting garment:", e);
+      console.error('Error deleting garment:', e);
     }
   };
 
   const saveOutfit = async (outfitData) => {
     if (!user) return;
     try {
-      // Remove 'id' from the data payload to avoid Firebase "undefined" errors
-      const { id, ...dataToSave } = outfitData;
-      
+      const cleanData = normalizeOutfit(outfitData);
+      const { id, ...dataToSave } = cleanData;
+
       if (id) {
-        // Update existing
         const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'outfits', id);
-        await updateDoc(docRef, dataToSave);
+        await updateDoc(docRef, {
+          ...dataToSave,
+          order: Number.isFinite(dataToSave.order) ? dataToSave.order : 0
+        });
       } else {
-        // Add new
         const collectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'outfits');
         await addDoc(collectionRef, {
           ...dataToSave,
           createdAt: Date.now(),
-          order: outfits.filter(o => o.dayId === outfitData.dayId).length // put at end
+          order: outfits.filter(o => o.dayId === cleanData.dayId).length
         });
       }
       setEditingOutfit(null);
     } catch (e) {
-      console.error("Error saving outfit:", e);
+      console.error('Error saving outfit:', e);
     }
   };
 
@@ -239,7 +261,7 @@ export default function WeeklyOutfitPlanner() {
     try {
       await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'outfits', id));
     } catch (e) {
-      console.error("Error deleting outfit:", e);
+      console.error('Error deleting outfit:', e);
     }
   };
 
@@ -247,40 +269,45 @@ export default function WeeklyOutfitPlanner() {
     if (!user) return;
     try {
       const collectionRef = collection(db, 'artifacts', appId, 'users', user.uid, 'outfits');
-      const { id, ...rest } = outfit;
+      const { id, ...rest } = normalizeOutfit(outfit);
       await addDoc(collectionRef, {
         ...rest,
-        name: `${rest.name} (Copia)`,
+        name: `${safeText(rest.name, 'Mi Look')} (Copia)`,
         createdAt: Date.now(),
-        order: outfits.filter(o => o.dayId === outfit.dayId).length
+        order: outfits.filter(o => o.dayId === rest.dayId).length
       });
     } catch (e) {
-      console.error("Error duplicating outfit:", e);
+      console.error('Error duplicating outfit:', e);
     }
   };
 
   const updateOutfitOrder = async (dayId, reorderedOutfits) => {
     if (!user) return;
-    // Optimistic UI update could go here
     try {
-      for (let i = 0; i < reorderedOutfits.length; i++) {
-        const outfit = reorderedOutfits[i];
-        if (outfit.order !== i) {
-          const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'outfits', outfit.id);
-          await updateDoc(docRef, { order: i });
-        }
+      const ordered = reorderedOutfits.map((outfit, index) => ({
+        ...normalizeOutfit(outfit),
+        dayId,
+        order: index
+      }));
+
+      for (const outfit of ordered) {
+        const docRef = doc(db, 'artifacts', appId, 'users', user.uid, 'outfits', outfit.id);
+        await updateDoc(docRef, {
+          dayId: outfit.dayId,
+          order: outfit.order
+        });
       }
     } catch (e) {
-      console.error("Error updating order:", e);
+      console.error('Error updating order:', e);
     }
   };
-
 
   const currentTheme = THEMES[settings.theme] || THEMES.editorial;
 
   const filteredWardrobe = useMemo(() => {
     return wardrobe.filter(item => {
-      const matchesSearch = item.name.toLowerCase().includes(wardrobeSearch.toLowerCase());
+      const term = safeText(item.name, '').toLowerCase();
+      const matchesSearch = term.includes(wardrobeSearch.toLowerCase());
       const matchesCat = wardrobeCategoryFilter === 'All' || item.category === wardrobeCategoryFilter;
       return matchesSearch && matchesCat;
     });
@@ -289,21 +316,19 @@ export default function WeeklyOutfitPlanner() {
   const outfitsByDay = useMemo(() => {
     const grouped = {};
     DAYS_OF_WEEK.forEach(day => { grouped[day.id] = []; });
-    
+
     outfits.forEach(outfit => {
       if (grouped[outfit.dayId]) {
         grouped[outfit.dayId].push(outfit);
       }
     });
 
-    // Sort by order within each day
     Object.keys(grouped).forEach(dayId => {
       grouped[dayId].sort((a, b) => (a.order || 0) - (b.order || 0));
     });
 
     return grouped;
   }, [outfits]);
-
 
   const AddGarmentModal = () => {
     const [name, setName] = useState('');
@@ -319,7 +344,7 @@ export default function WeeklyOutfitPlanner() {
         const base64 = await compressImage(file);
         setImageStr(base64);
       } catch (err) {
-        console.error("Image processing failed", err);
+        console.error('Image processing failed', err);
       } finally {
         setIsLoading(false);
       }
@@ -328,7 +353,7 @@ export default function WeeklyOutfitPlanner() {
     const handleSubmit = (e) => {
       e.preventDefault();
       if (!imageStr) {
-        alert("Por favor selecciona una imagen.");
+        alert('Por favor selecciona una imagen.');
         return;
       }
       addGarment({ name: name || 'Prenda sin nombre', category, image: imageStr });
@@ -340,15 +365,15 @@ export default function WeeklyOutfitPlanner() {
           <button onClick={() => setIsAddingGarment(false)} className="absolute top-4 right-4 opacity-50 hover:opacity-100">
             <X size={20} />
           </button>
-          
+
           <h2 className={`text-2xl mb-6 ${currentTheme.fontHeading}`}>Añadir al Armario</h2>
-          
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm mb-1 opacity-70">Fotografía</label>
-              <div className={`border-2 border-dashed ${currentTheme.border} rounded-lg p-4 text-center cursor-pointer hover:bg-black/5 transition-colors relative h-48 flex items-center justify-center overflow-hidden`}>
+              <div className={`border-2 border-dashed ${currentTheme.border} rounded-lg p-4 text-center cursor-pointer hover:bg-black/5 transition-colors relative h-48 flex items-center justify-center`}>
                 {imageStr ? (
-                   <img src={imageStr} alt="Preview" className="max-h-full max-w-full object-contain" />
+                  <img src={imageStr} alt="Preview" className="max-h-full max-w-full object-contain" />
                 ) : (
                   <div className="flex flex-col items-center opacity-50">
                     {isLoading ? <span className="animate-pulse">Procesando...</span> : (
@@ -365,10 +390,10 @@ export default function WeeklyOutfitPlanner() {
 
             <div>
               <label className="block text-sm mb-1 opacity-70">Nombre (Opcional)</label>
-              <input 
-                type="text" 
-                value={name} 
-                onChange={e => setName(e.target.value)} 
+              <input
+                type="text"
+                value={name}
+                onChange={e => setName(e.target.value)}
                 placeholder="Ej. Blusa de seda blanca"
                 className={`w-full p-2 border ${currentTheme.border} rounded bg-transparent outline-none focus:border-current`}
               />
@@ -376,8 +401,8 @@ export default function WeeklyOutfitPlanner() {
 
             <div>
               <label className="block text-sm mb-1 opacity-70">Categoría</label>
-              <select 
-                value={category} 
+              <select
+                value={category}
                 onChange={e => setCategory(e.target.value)}
                 className={`w-full p-2 border ${currentTheme.border} rounded bg-transparent outline-none focus:border-current`}
               >
@@ -387,8 +412,8 @@ export default function WeeklyOutfitPlanner() {
               </select>
             </div>
 
-            <button 
-              type="submit" 
+            <button
+              type="submit"
               disabled={!imageStr || isLoading}
               className={`w-full py-3 mt-4 rounded-lg ${currentTheme.accent} transition-opacity disabled:opacity-50`}
             >
@@ -401,28 +426,22 @@ export default function WeeklyOutfitPlanner() {
   };
 
   const OutfitEditorModal = () => {
-    // If outfitId is present, we are editing, else creating new
-    const existingOutfit = editingOutfit.outfitId ? outfits.find(o => o.id === editingOutfit.outfitId) : null;
-    
+    const existingOutfit = editingOutfit && editingOutfit.outfitId ? outfits.find(o => o.id === editingOutfit.outfitId) : null;
+
     const [name, setName] = useState(existingOutfit ? existingOutfit.name : 'Mi Look');
     const [selectedItems, setSelectedItems] = useState(existingOutfit ? existingOutfit.items || [] : []);
-    const [dayId, setDayId] = useState(editingOutfit.dayId);
-    
+    const [dayId, setDayId] = useState(editingOutfit ? editingOutfit.dayId : 'monday');
+
     const handleSave = () => {
       saveOutfit({
-        id: editingOutfit.outfitId, // undefined if new
+        id: editingOutfit && editingOutfit.outfitId,
         dayId,
-        name,
+        name: safeText(name, 'Mi Look'),
         items: selectedItems
       });
     };
 
     const toggleItem = (garment) => {
-      // In this version, we store the full garment object snapshot in the outfit
-      // so if it's deleted from wardrobe, it stays in the outfit as requested.
-      // Alternatively, just store ID and fetch. The prompt says: "Eliminar una prenda de un outfit NO debe eliminarla del armario" (obvious).
-      // But also implies outfits should look stable. Storing a snapshot of {id, image, name} is safer for a self-contained look.
-      
       const existsIndex = selectedItems.findIndex(i => i.id === garment.id);
       if (existsIndex >= 0) {
         setSelectedItems(prev => prev.filter((_, idx) => idx !== existsIndex));
@@ -444,8 +463,6 @@ export default function WeeklyOutfitPlanner() {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
         <div className={`${currentTheme.bg} ${currentTheme.text} w-full max-w-5xl h-[90vh] rounded-xl shadow-2xl flex flex-col md:flex-row overflow-hidden border ${currentTheme.border}`}>
-          
-          {/* Editor Left Side (Outfit Builder) */}
           <div className="w-full md:w-1/2 p-6 flex flex-col border-b md:border-b-0 md:border-r border-inherit">
             <div className="flex justify-between items-center mb-6">
               <h2 className={`text-2xl ${currentTheme.fontHeading}`}>{existingOutfit ? 'Editar Outfit' : 'Crear Outfit'}</h2>
@@ -455,15 +472,18 @@ export default function WeeklyOutfitPlanner() {
             <div className="space-y-4 mb-6">
               <div>
                 <label className="text-sm opacity-70 uppercase tracking-widest text-xs mb-1 block">Nombre del Look</label>
-                <input 
-                  type="text" value={name} onChange={e => setName(e.target.value)}
+                <input
+                  type="text"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
                   className={`w-full p-2 border-b ${currentTheme.border} bg-transparent text-xl ${currentTheme.fontHeading} outline-none focus:border-current`}
                 />
               </div>
               <div>
                 <label className="text-sm opacity-70 uppercase tracking-widest text-xs mb-1 block">Día asignado</label>
-                <select 
-                  value={dayId} onChange={e => setDayId(e.target.value)}
+                <select
+                  value={dayId}
+                  onChange={e => setDayId(e.target.value)}
                   className={`w-full p-2 border ${currentTheme.border} bg-transparent outline-none rounded`}
                 >
                   {DAYS_OF_WEEK.map(d => (
@@ -484,10 +504,8 @@ export default function WeeklyOutfitPlanner() {
               ) : (
                 <div className="grid grid-cols-2 gap-4">
                   {selectedItems.map((item, idx) => (
-                    <div key={idx} className="relative group bg-white p-2 rounded shadow-sm">
+                    <div key={`${item.id || idx}-${idx}`} className="relative group bg-white p-2 rounded shadow-sm">
                       <img src={item.image} alt="prenda" className="w-full h-32 object-contain rounded" />
-                      
-                      {/* Controls overlay */}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded">
                         <button onClick={() => moveItem(idx, 'up')} disabled={idx === 0} className="p-1 bg-white rounded-full text-black disabled:opacity-30"><ArrowUp size={16}/></button>
                         <button onClick={() => toggleItem(item)} className="p-1 bg-red-500 rounded-full text-white"><X size={16}/></button>
@@ -514,49 +532,45 @@ export default function WeeklyOutfitPlanner() {
             </div>
           </div>
 
-          {/* Editor Right Side (Wardrobe Picker) */}
           <div className="w-full md:w-1/2 flex flex-col bg-black/5">
-             <div className="p-4 border-b border-black/10 flex justify-between items-center bg-white/50 backdrop-blur">
-                <h3 className="font-medium tracking-wide uppercase text-sm">Seleccionar del Armario</h3>
-                <div className="flex gap-2">
-                  <select 
-                    value={wardrobeCategoryFilter} 
-                    onChange={e => setWardrobeCategoryFilter(e.target.value)}
-                    className="text-xs p-1 border rounded bg-transparent"
-                  >
-                    <option value="All">Todas las categorías</option>
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </div>
-             </div>
-             
-             <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-3 content-start">
-               {filteredWardrobe.length === 0 ? (
-                 <div className="col-span-3 text-center py-10 opacity-50">No hay prendas que coincidan.</div>
-               ) : (
-                 filteredWardrobe.map(item => {
-                   const isSelected = selectedItems.some(i => i.id === item.id);
-                   return (
-                     <div 
-                        key={item.id} 
-                        onClick={() => toggleItem(item)}
-                        className={`cursor-pointer border transition-all rounded bg-white aspect-square flex items-center justify-center p-2 relative
-                          ${isSelected ? 'border-black shadow-md' : 'border-transparent hover:border-black/30'}
-                        `}
-                     >
-                       <img src={item.image} alt={item.name} className={`max-w-full max-h-full object-contain ${isSelected ? 'opacity-80' : ''}`} />
-                       {isSelected && (
-                         <div className="absolute top-1 right-1 bg-black text-white rounded-full p-0.5">
-                           <Check size={14} />
-                         </div>
-                       )}
-                     </div>
-                   );
-                 })
-               )}
-             </div>
-          </div>
+            <div className="p-4 border-b border-black/10 flex justify-between items-center bg-white/50 backdrop-blur">
+              <h3 className="font-medium tracking-wide uppercase text-sm">Seleccionar del Armario</h3>
+              <div className="flex gap-2">
+                <select
+                  value={wardrobeCategoryFilter}
+                  onChange={e => setWardrobeCategoryFilter(e.target.value)}
+                  className="text-xs p-1 border rounded bg-transparent"
+                >
+                  <option value="All">Todas las categorías</option>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
 
+            <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 gap-3 content-start">
+              {filteredWardrobe.length === 0 ? (
+                <div className="col-span-3 text-center py-10 opacity-50">No hay prendas que coincidan.</div>
+              ) : (
+                filteredWardrobe.map(item => {
+                  const isSelected = selectedItems.some(i => i.id === item.id);
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => toggleItem(item)}
+                      className={`cursor-pointer border transition-all rounded bg-white aspect-square flex items-center justify-center p-2 relative ${isSelected ? 'border-black shadow-md' : 'border-transparent hover:border-black/30'}`}
+                    >
+                      <img src={item.image} alt={item.name} className={`max-w-full max-h-full object-contain ${isSelected ? 'opacity-80' : ''}`} />
+                      {isSelected && (
+                        <div className="absolute top-1 right-1 bg-black text-white rounded-full p-0.5">
+                          <Check size={14} />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
         </div>
       </div>
     );
@@ -573,17 +587,14 @@ export default function WeeklyOutfitPlanner() {
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-8">
-          {/* Theme Selection */}
           <section>
             <h3 className="text-sm uppercase tracking-widest text-gray-500 mb-3">Tema</h3>
             <div className="grid grid-cols-2 gap-2">
               {Object.values(THEMES).map(t => (
-                <button 
+                <button
                   key={t.id}
                   onClick={() => saveSetting('theme', t.id)}
-                  className={`p-3 rounded text-sm text-left border transition-all
-                    ${settings.theme === t.id ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'}
-                  `}
+                  className={`p-3 rounded text-sm text-left border transition-all ${settings.theme === t.id ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-gray-300'}`}
                 >
                   <div className={`w-full h-8 mb-2 rounded border ${t.bg} ${t.border}`}></div>
                   {t.name}
@@ -592,14 +603,13 @@ export default function WeeklyOutfitPlanner() {
             </div>
           </section>
 
-          {/* Titles customization */}
           <section>
             <h3 className="text-sm uppercase tracking-widest text-gray-500 mb-3">Títulos</h3>
             <div className="space-y-3">
               <div>
                 <label className="text-xs opacity-70 block mb-1">Título Principal</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={settings.plannerTitle}
                   onChange={e => saveSetting('plannerTitle', e.target.value)}
                   className="w-full p-2 border border-gray-200 rounded text-sm"
@@ -610,7 +620,7 @@ export default function WeeklyOutfitPlanner() {
                 {DAYS_OF_WEEK.map(day => (
                   <div key={day.id} className="flex mb-2">
                     <span className="w-8 text-xs text-gray-400 py-2">{day.defaultName.substring(0,3)}</span>
-                    <input 
+                    <input
                       type="text"
                       placeholder={day.defaultName}
                       value={settings.customDayNames[day.id] || ''}
@@ -636,34 +646,31 @@ export default function WeeklyOutfitPlanner() {
     if (isPreviewMode) return;
     setDraggedOutfitId(outfitId);
     e.dataTransfer.effectAllowed = 'move';
-    // Firefox requires setting data to enable drag
     e.dataTransfer.setData('text/plain', outfitId);
-    // Slight delay to allow visual drag image to capture before changing DOM
     setTimeout(() => {
-      e.target.classList.add('opacity-40');
+      if (e.target && e.target.classList) e.target.classList.add('opacity-40');
     }, 0);
   };
 
   const handleDragEnd = (e) => {
-    e.target.classList.remove('opacity-40');
+    if (e.target && e.target.classList) e.target.classList.remove('opacity-40');
     setDraggedOutfitId(null);
   };
 
   const handleDragOver = (e) => {
     if (isPreviewMode) return;
-    e.preventDefault(); // Necessary to allow dropping
+    e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
   const handleDropOnDay = (e, targetDayId) => {
     if (isPreviewMode || !draggedOutfitId) return;
     e.preventDefault();
-    
+
     const draggedOutfit = outfits.find(o => o.id === draggedOutfitId);
     if (!draggedOutfit) return;
 
     if (draggedOutfit.dayId !== targetDayId) {
-      // Moved to a different day, put it at the end
       const targetDayOutfits = outfits.filter(o => o.dayId === targetDayId);
       saveOutfit({ ...draggedOutfit, dayId: targetDayId, order: targetDayOutfits.length });
     }
@@ -673,47 +680,43 @@ export default function WeeklyOutfitPlanner() {
   const handleDropOnOutfit = (e, targetDayId, targetOutfitIndex) => {
     if (isPreviewMode || !draggedOutfitId) return;
     e.preventDefault();
-    e.stopPropagation(); // Prevent Day drop handler
+    e.stopPropagation();
 
     const draggedOutfit = outfits.find(o => o.id === draggedOutfitId);
     if (!draggedOutfit) return;
 
     const currentDayOutfits = outfitsByDay[targetDayId] || [];
-    
+
     if (draggedOutfit.dayId === targetDayId) {
-      // Reorder within same day
       const oldIndex = currentDayOutfits.findIndex(o => o.id === draggedOutfitId);
+      if (oldIndex < 0) return;
       const newOutfitsList = Array.from(currentDayOutfits);
       newOutfitsList.splice(oldIndex, 1);
       newOutfitsList.splice(targetOutfitIndex, 0, draggedOutfit);
       updateOutfitOrder(targetDayId, newOutfitsList);
     } else {
-      // Moved to different day at specific position
       const newOutfitsList = Array.from(currentDayOutfits);
       newOutfitsList.splice(targetOutfitIndex, 0, { ...draggedOutfit, dayId: targetDayId });
-      // Update dragged outfit's day
-      saveOutfit({ ...draggedOutfit, dayId: targetDayId });
-      // We should ideally update order for all items in the new day here, 
-      // but simplistic approach for this scale works reasonably well via next render sorting.
+      const reordered = newOutfitsList.map((item, index) => ({ ...item, order: index }));
+      saveOutfit({ ...draggedOutfit, dayId: targetDayId, order: targetOutfitIndex });
+      updateOutfitOrder(targetDayId, reordered);
     }
     setDraggedOutfitId(null);
   };
 
   return (
     <div className={`min-h-screen font-sans transition-colors duration-500 ${currentTheme.bg} ${currentTheme.text}`}>
-      {/* Header */}
       <header className={`sticky top-0 z-30 backdrop-blur-md bg-opacity-80 ${currentTheme.bg} border-b ${currentTheme.border} p-4 flex justify-between items-center`}>
         <div className="flex-1"></div>
-        
-        {/* Main Title - Rendered as HTML to allow typical editorial typography mixing */}
+
         <h1 className={`text-center flex-1 text-2xl md:text-4xl ${currentTheme.titleStyle} ${currentTheme.fontHeading}`}>
-          {settings.plannerTitle.split(' ').map((word, i) => (
-             <span key={i} className={i % 2 !== 0 ? 'italic font-light mx-2' : ''}>{word} </span>
+          {safeText(settings.plannerTitle, 'WEEKLY OUTFIT PLANNER').split(' ').map((word, i) => (
+            <span key={i} className={i % 2 !== 0 ? 'italic font-light mx-2' : ''}>{word} </span>
           ))}
         </h1>
 
         <div className="flex-1 flex justify-end items-center gap-2 md:gap-4">
-          <button 
+          <button
             onClick={() => setIsPreviewMode(!isPreviewMode)}
             className="p-2 rounded-full hover:bg-black/5 transition-colors flex items-center gap-2 text-sm"
             title="Modo Vista Previa"
@@ -722,29 +725,25 @@ export default function WeeklyOutfitPlanner() {
             <span className="hidden md:inline">{isPreviewMode ? 'Editar' : 'Preview'}</span>
           </button>
           {!isPreviewMode && (
-            <button 
+            <button
               onClick={() => setIsSettingsOpen(true)}
               className="p-2 rounded-full hover:bg-black/5 transition-colors"
             >
               <Settings size={20} />
             </button>
           )}
-          {/* Mobile Wardrobe Toggle */}
           {!isPreviewMode && (
-             <button 
-               className="md:hidden p-2 rounded hover:bg-black/5"
-               onClick={() => setIsWardrobeOpenMobile(!isWardrobeOpenMobile)}
-             >
-               <ImageIcon size={20} />
-             </button>
+            <button
+              className="md:hidden p-2 rounded hover:bg-black/5"
+              onClick={() => setIsWardrobeOpenMobile(!isWardrobeOpenMobile)}
+            >
+              <ImageIcon size={20} />
+            </button>
           )}
         </div>
       </header>
 
-      {/* Main Layout Grid */}
       <div className="max-w-[1800px] mx-auto p-4 md:p-8 flex flex-col md:flex-row gap-8 relative">
-        
-        {/* Left Side: Weekly Planner Grid */}
         <main className="flex-1">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-10">
             {DAYS_OF_WEEK.map((day) => {
@@ -752,19 +751,16 @@ export default function WeeklyOutfitPlanner() {
               const dayName = settings.customDayNames[day.id] || day.defaultName;
 
               return (
-                <div 
+                <div
                   key={day.id}
-                  className={`flex flex-col relative
-                    ${currentTheme.card !== 'bg-transparent' ? `${currentTheme.card} p-4 rounded-xl` : ''}
-                    ${isPreviewMode ? '' : `border-t-2 ${currentTheme.border} pt-4`}
-                  `}
+                  className={`flex flex-col relative ${currentTheme.card !== 'bg-transparent' ? `${currentTheme.card} p-4 rounded-xl` : ''} ${isPreviewMode ? '' : `border-t-2 ${currentTheme.border} pt-4`}`}
                   onDragOver={handleDragOver}
                   onDrop={(e) => handleDropOnDay(e, day.id)}
                 >
                   <div className="flex justify-between items-end mb-4">
                     <h2 className={`text-3xl capitalize ${currentTheme.fontHeading}`}>{dayName}</h2>
                     {!isPreviewMode && (
-                      <button 
+                      <button
                         onClick={() => setEditingOutfit({ dayId: day.id })}
                         className="text-xs uppercase tracking-wider opacity-60 hover:opacity-100 flex items-center gap-1 transition-opacity"
                       >
@@ -775,38 +771,35 @@ export default function WeeklyOutfitPlanner() {
 
                   <div className="flex flex-col gap-6 flex-1">
                     {dayOutfits.length === 0 ? (
-                       <div className={`flex-1 min-h-[150px] border-2 border-dashed ${currentTheme.border} opacity-40 flex items-center justify-center text-sm uppercase tracking-widest ${isPreviewMode ? 'hidden' : ''}`}>
-                         Ningún outfit planeado
-                       </div>
+                      <div className={`flex-1 min-h-[150px] border-2 border-dashed ${currentTheme.border} opacity-40 flex items-center justify-center text-sm uppercase tracking-widest ${isPreviewMode ? '' : ''}`}>
+                        Ningún outfit planeado
+                      </div>
                     ) : (
                       dayOutfits.map((outfit, index) => (
-                        <div 
+                        <div
                           key={outfit.id}
                           draggable={!isPreviewMode}
                           onDragStart={(e) => handleDragStart(e, outfit.id)}
                           onDragEnd={handleDragEnd}
                           onDragOver={handleDragOver}
                           onDrop={(e) => handleDropOnOutfit(e, day.id, index)}
-                          className={`group relative flex flex-col
-                            ${!isPreviewMode ? 'cursor-grab active:cursor-grabbing hover:bg-black/5 p-2 -mx-2 rounded transition-colors' : ''}
-                          `}
+                          className={`group relative flex flex-col ${!isPreviewMode ? 'cursor-grab active:cursor-grabbing hover:bg-black/5 p-2 -mx-2 rounded transition-colors' : ''}`}
                         >
                           <div className="flex justify-between items-center mb-2">
-                             <h3 className={`text-lg font-medium opacity-90 ${currentTheme.fontUI}`}>{outfit.name}</h3>
-                             {!isPreviewMode && (
-                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                                 <button onClick={() => setEditingOutfit({ dayId: day.id, outfitId: outfit.id })} className="p-1 hover:text-blue-500"><Edit2 size={14}/></button>
-                                 <button onClick={() => duplicateOutfit(outfit)} className="p-1 hover:text-green-500"><Copy size={14}/></button>
-                                 <button onClick={() => deleteOutfit(outfit.id)} className="p-1 hover:text-red-500"><Trash2 size={14}/></button>
-                                 <div className="p-1 cursor-grab opacity-50 hidden md:block"><GripVertical size={14}/></div>
-                               </div>
-                             )}
+                            <h3 className={`text-lg font-medium opacity-90 ${currentTheme.fontUI}`}>{safeText(outfit.name, 'Mi Look')}</h3>
+                            {!isPreviewMode && (
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                                <button onClick={() => setEditingOutfit({ dayId: day.id, outfitId: outfit.id })} className="p-1 hover:text-blue-500"><Edit2 size={14}/></button>
+                                <button onClick={() => duplicateOutfit(outfit)} className="p-1 hover:text-green-500"><Copy size={14}/></button>
+                                <button onClick={() => deleteOutfit(outfit.id)} className="p-1 hover:text-red-500"><Trash2 size={14}/></button>
+                                <div className="p-1 cursor-grab opacity-50 hidden md:block"><GripVertical size={14}/></div>
+                              </div>
+                            )}
                           </div>
-                          
-                          {/* Outfit Items Visualization - Editorial collage style */}
+
                           <div className={`grid gap-2 ${outfit.items?.length > 4 ? 'grid-cols-3' : 'grid-cols-2'}`}>
                             {outfit.items?.map((item, i) => (
-                              <div key={i} className="aspect-[3/4] bg-white/50 backdrop-blur rounded flex items-center justify-center p-1 shadow-sm border border-black/5 overflow-hidden">
+                              <div key={`${item.id || i}-${i}`} className="aspect-[3/4] bg-white/50 backdrop-blur rounded flex items-center justify-center p-1 shadow-sm border border-black/5 overflow-hidden">
                                 <img src={item.image} alt="prenda" className="w-full h-full object-contain mix-blend-multiply" />
                               </div>
                             ))}
@@ -821,79 +814,74 @@ export default function WeeklyOutfitPlanner() {
           </div>
         </main>
 
-        {/* Right Side: Wardrobe Sidebar */}
         {!isPreviewMode && (
-          <aside className={`
-            fixed inset-y-0 right-0 w-80 shadow-2xl z-30 transform transition-transform duration-300 md:relative md:transform-none md:shadow-none md:border-l ${currentTheme.border} md:pl-6
-            ${currentTheme.bg} flex flex-col
-            ${isWardrobeOpenMobile ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}
-          `}>
+          <aside className={`fixed inset-y-0 right-0 w-80 shadow-2xl z-30 transform transition-transform duration-300 md:relative md:transform-none md:shadow-none md:border-l ${currentTheme.border} md:pl-6 ${currentTheme.bg} flex flex-col ${isWardrobeOpenMobile ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
             <div className="sticky top-0 pt-4 pb-4 bg-inherit z-10 border-b border-inherit mb-4 px-4 md:px-0">
-               <div className="flex justify-between items-center mb-4">
-                 <h2 className={`text-xl uppercase tracking-widest ${currentTheme.fontHeading}`}>Mi Armario</h2>
-                 <span className="text-xs bg-black/10 px-2 py-1 rounded-full">{wardrobe.length} prendas</span>
-                 <button className="md:hidden p-2" onClick={() => setIsWardrobeOpenMobile(false)}><X size={20}/></button>
-               </div>
-               
-               <button 
-                 onClick={() => setIsAddingGarment(true)}
-                 className={`w-full py-3 flex items-center justify-center gap-2 rounded border border-dashed hover:bg-black/5 transition-colors mb-4 ${currentTheme.border}`}
-               >
-                 <Plus size={16} /> Agregar prenda
-               </button>
+              <div className="flex justify-between items-center mb-4">
+                <h2 className={`text-xl uppercase tracking-widest ${currentTheme.fontHeading}`}>Mi Armario</h2>
+                <span className="text-xs bg-black/10 px-2 py-1 rounded-full">{wardrobe.length} prendas</span>
+                <button className="md:hidden p-2" onClick={() => setIsWardrobeOpenMobile(false)}><X size={20}/></button>
+              </div>
 
-               <div className="flex gap-2">
-                 <div className={`flex-1 flex items-center border rounded px-2 ${currentTheme.border}`}>
-                   <Search size={14} className="opacity-50" />
-                   <input 
-                     type="text" placeholder="Buscar..." 
-                     value={wardrobeSearch} onChange={e => setWardrobeSearch(e.target.value)}
-                     className="w-full p-2 bg-transparent outline-none text-sm"
-                   />
-                 </div>
-                 <select 
-                   value={wardrobeCategoryFilter} 
-                   onChange={e => setWardrobeCategoryFilter(e.target.value)}
-                   className={`border rounded px-2 text-sm bg-transparent outline-none ${currentTheme.border}`}
-                 >
-                   <option value="All">Categorías</option>
-                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                 </select>
-               </div>
+              <button
+                onClick={() => setIsAddingGarment(true)}
+                className={`w-full py-3 flex items-center justify-center gap-2 rounded border border-dashed hover:bg-black/5 transition-colors mb-4 ${currentTheme.border}`}
+              >
+                <Plus size={16} /> Agregar prenda
+              </button>
+
+              <div className="flex gap-2">
+                <div className={`flex-1 flex items-center border rounded px-2 ${currentTheme.border}`}>
+                  <Search size={14} className="opacity-50" />
+                  <input
+                    type="text"
+                    placeholder="Buscar..."
+                    value={wardrobeSearch}
+                    onChange={e => setWardrobeSearch(e.target.value)}
+                    className="w-full p-2 bg-transparent outline-none text-sm"
+                  />
+                </div>
+                <select
+                  value={wardrobeCategoryFilter}
+                  onChange={e => setWardrobeCategoryFilter(e.target.value)}
+                  className={`border rounded px-2 text-sm bg-transparent outline-none ${currentTheme.border}`}
+                >
+                  <option value="All">Categorías</option>
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto grid grid-cols-2 gap-3 pb-20 px-4 md:px-0">
-               {filteredWardrobe.length === 0 ? (
-                 <div className="col-span-2 text-center py-10 opacity-50 text-sm">
-                   {wardrobe.length === 0 ? "Tu armario espera su primera prenda." : "No se encontraron prendas."}
-                 </div>
-               ) : (
-                 filteredWardrobe.map(item => (
-                   <div key={item.id} className="group relative bg-white border border-gray-100 rounded p-2 aspect-[3/4] flex flex-col justify-between shadow-sm">
-                     <div className="flex-1 flex items-center justify-center overflow-hidden">
-                        <img src={item.image} alt={item.name} className="max-w-full max-h-full object-contain mix-blend-multiply" loading="lazy" />
-                     </div>
-                     <div className="text-xs truncate text-center mt-2 text-gray-500">{item.name || item.category}</div>
-                     
-                     <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                       <button onClick={() => deleteGarment(item.id)} className="p-1.5 bg-white rounded-full shadow text-red-500 hover:bg-red-50">
-                         <Trash2 size={12} />
-                       </button>
-                     </div>
-                   </div>
-                 ))
-               )}
+              {filteredWardrobe.length === 0 ? (
+                <div className="col-span-2 text-center py-10 opacity-50 text-sm">
+                  {wardrobe.length === 0 ? 'Tu armario espera su primera prenda.' : 'No se encontraron prendas.'}
+                </div>
+              ) : (
+                filteredWardrobe.map(item => (
+                  <div key={item.id} className="group relative bg-white border border-gray-100 rounded p-2 aspect-[3/4] flex flex-col justify-between shadow-sm">
+                    <div className="flex-1 flex items-center justify-center overflow-hidden">
+                      <img src={item.image} alt={item.name} className="max-w-full max-h-full object-contain mix-blend-multiply" loading="lazy" />
+                    </div>
+                    <div className="text-xs truncate text-center mt-2 text-gray-500">{item.name || item.category}</div>
+
+                    <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => deleteGarment(item.id)} className="p-1.5 bg-white rounded-full shadow text-red-500 hover:bg-red-50">
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </aside>
         )}
       </div>
 
-      {/* Modals & Overlays */}
       {isAddingGarment && <AddGarmentModal />}
       {editingOutfit && <OutfitEditorModal />}
       <SettingsPanel />
 
-      {/* Global CSS for animations */}
       <style>{`
         @keyframes slideIn {
           from { transform: translateX(100%); }
@@ -902,8 +890,7 @@ export default function WeeklyOutfitPlanner() {
         .animate-slide-in {
           animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-        
-        /* Hide scrollbars for cleaner look */
+
         ::-webkit-scrollbar {
           width: 6px;
         }
