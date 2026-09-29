@@ -1,0 +1,1229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Outfit Planner — Editorial Wardrobe</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Fonts: Playfair Display for Editorial Serifs & Plus Jakarta Sans for UI -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cream: '#F7F3EF',
+                        card: '#FBF9F6',
+                        ink: '#171515',
+                        muted: '#77716C',
+                        editorialBorder: '#D8D0C8',
+                        accentGold: '#8C7355',
+                        accentDark: '#2C2723',
+                        softGold: '#E6DFD5'
+                    },
+                    fontFamily: {
+                        serif: ['"Playfair Display"', 'Georgia', 'serif'],
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #F7F3EF;
+            color: #171515;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .serif-title {
+            font-family: 'Playfair Display', Georgia, serif;
+        }
+
+        /* Custom Subtle Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #F7F3EF;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #D8D0C8;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #8C7355;
+        }
+
+        .editorial-card {
+            background-color: #FBF9F6;
+            border: 1px solid #D8D0C8;
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .editorial-card:hover {
+            border-color: #8C7355;
+            box-shadow: 0 10px 25px -5px rgba(23, 21, 21, 0.05);
+        }
+
+        .item-card {
+            transition: all 0.2s ease;
+        }
+        .item-card:hover {
+            transform: translateY(-2px);
+        }
+
+        /* Smooth Modal Transitions */
+        .modal-backdrop {
+            background-color: rgba(23, 21, 21, 0.4);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Drag and drop styling */
+        .dragging {
+            opacity: 0.5;
+            scale: 0.98;
+        }
+        .drag-over {
+            border-style: dashed !important;
+            border-color: #8C7355 !important;
+            background-color: #F7F3EF !important;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-accentGold selection:text-white">
+
+    <div id="app" class="flex-grow pb-16">
+        <!-- Top Editorial Header Bar -->
+        <header class="border-b border-editorialBorder bg-cream sticky top-0 z-30 backdrop-blur-md bg-opacity-90">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <!-- Title Branding -->
+                    <div class="flex flex-col">
+                        <span class="text-xs uppercase tracking-[0.3em] text-muted font-medium">Issue N° 01 • Digital Wardrobe</span>
+                        <h1 class="serif-title text-2xl sm:text-3xl lg:text-4xl font-normal tracking-tight text-ink mt-0.5">
+                            Weekly Outfit Planner
+                        </h1>
+                    </div>
+
+                    <!-- Action Controls -->
+                    <div class="flex flex-wrap items-center gap-2 sm:gap-3">
+                        <button onclick="openNewOutfitModal()" class="px-4 py-2.5 bg-ink text-cream hover:bg-accentDark transition text-xs font-semibold uppercase tracking-widest flex items-center gap-2 shadow-sm rounded-none">
+                            <i class="fa-solid fa-plus text-xs"></i> New Outfit
+                        </button>
+
+                        <button onclick="triggerSurpriseMe()" class="px-4 py-2.5 bg-card border border-editorialBorder text-ink hover:border-accentGold transition text-xs font-semibold uppercase tracking-widest flex items-center gap-2">
+                            <i class="fa-solid fa-wand-magic-sparkles text-accentGold"></i> Surprise Me
+                        </button>
+
+                        <button onclick="openManageDaysModal()" class="px-3 py-2.5 bg-card border border-editorialBorder text-ink hover:border-accentGold transition text-xs font-semibold tracking-wider flex items-center gap-1.5" title="Manage Days">
+                            <i class="fa-solid fa-calendar-days text-muted"></i>
+                            <span class="hidden sm:inline">Days</span>
+                        </button>
+
+                        <button onclick="toggleFavoritesFilter()" id="favFilterBtn" class="px-3 py-2.5 bg-card border border-editorialBorder text-ink hover:border-accentGold transition text-xs font-semibold tracking-wider flex items-center gap-1.5">
+                            <i class="fa-regular fa-heart text-accentGold" id="favFilterIcon"></i>
+                            <span class="hidden sm:inline" id="favFilterLabel">Favorites</span>
+                        </button>
+
+                        <button onclick="window.print()" class="px-3 py-2.5 bg-card border border-editorialBorder text-muted hover:text-ink transition text-xs font-semibold tracking-wider hidden md:flex items-center gap-1.5" title="Print / Export">
+                            <i class="fa-solid fa-print"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <section class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-4">
+            <div class="border-y border-editorialBorder py-3.5 flex flex-wrap items-center justify-between gap-4 text-xs tracking-wider text-muted uppercase">
+                <div class="flex items-center space-x-6">
+                    <div><span class="font-bold text-ink text-sm" id="statTotalOutfits">0</span> Outfits Planned</div>
+                    <div class="h-3 w-px bg-editorialBorder"></div>
+                    <div><span class="font-bold text-ink text-sm" id="statTotalItems">0</span> Total Pieces</div>
+                    <div class="h-3 w-px bg-editorialBorder"></div>
+                    <div><span class="font-bold text-ink text-sm" id="statFavorites">0</span> Favorites</div>
+                </div>
+
+                <!-- Category Quick Filter -->
+                <div class="flex items-center gap-2">
+                    <span class="text-muted hidden sm:inline">Category Filter:</span>
+                    <select id="categoryFilter" onchange="filterByCategory(this.value)" class="bg-card border border-editorialBorder px-2.5 py-1 text-xs text-ink focus:outline-none focus:border-accentGold">
+                        <option value="ALL">All Categories</option>
+                        <option value="Tops">Tops</option>
+                        <option value="Bottoms">Bottoms</option>
+                        <option value="Dresses">Dresses</option>
+                        <option value="Outerwear">Outerwear</option>
+                        <option value="Shoes">Shoes</option>
+                        <option value="Bags">Bags</option>
+                        <option value="Jewelry">Jewelry</option>
+                        <option value="Accessories">Accessories</option>
+                    </select>
+                </div>
+            </div>
+        </section>
+
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+            <!-- Grid for Outfits / Days -->
+            <div id="weeklyGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <!-- Day / Outfit Cards dynamically injected here -->
+            </div>
+
+            <!-- Empty State Display -->
+            <div id="emptyState" class="hidden text-center py-20 border border-dashed border-editorialBorder bg-card my-8 p-8">
+                <i class="fa-solid fa-shirt text-4xl text-muted mb-4 block"></i>
+                <h3 class="serif-title text-2xl text-ink">No outfits match your filter</h3>
+                <p class="text-muted text-sm mt-2 max-w-md mx-auto">Try clearing your filters or create a new outfit for the week.</p>
+                <button onclick="resetFilters()" class="mt-5 px-5 py-2.5 bg-ink text-cream text-xs uppercase font-semibold tracking-widest">
+                    Clear Filters
+                </button>
+            </div>
+        </main>
+    </div>
+
+    <footer class="border-t border-editorialBorder bg-cream py-8 text-center text-xs text-muted">
+        <div class="max-w-7xl mx-auto px-4">
+            <p class="serif-title italic text-base text-ink mb-1">"Elegance is refusal." — Coco Chanel</p>
+            <p class="tracking-widest uppercase text-[10px]">Digital Wardrobe Stylist & Outfit Curator</p>
+        </div>
+    </footer>
+
+    
+    <!-- 1. NEW / EDIT OUTFIT MODAL -->
+    <div id="outfitModal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden p-4 overflow-y-auto">
+        <div class="bg-card border border-editorialBorder w-full max-w-2xl my-8 p-6 sm:p-8 relative shadow-2xl">
+            <!-- Close Button -->
+            <button onclick="closeModal('outfitModal')" class="absolute top-6 right-6 text-muted hover:text-ink text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <span class="text-xs uppercase tracking-widest text-accentGold font-semibold block mb-1" id="outfitModalSubtitle">Create Look</span>
+            <h2 class="serif-title text-2xl sm:text-3xl text-ink mb-6" id="outfitModalTitle">New Outfit</h2>
+
+            <form id="outfitForm" onsubmit="handleSaveOutfit(event)">
+                <input type="hidden" id="editOutfitId" value="">
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+                    <div>
+                        <label class="block text-xs uppercase tracking-wider text-muted mb-1.5 font-medium">Outfit Title *</label>
+                        <input type="text" id="outfitNameInput" required placeholder="e.g. Soft Blue Monday" class="w-full bg-cream border border-editorialBorder px-3.5 py-2 text-sm text-ink focus:outline-none focus:border-accentGold">
+                    </div>
+                    <div>
+                        <label class="block text-xs uppercase tracking-wider text-muted mb-1.5 font-medium">Day Assignment *</label>
+                        <select id="outfitDayInput" required class="w-full bg-cream border border-editorialBorder px-3.5 py-2 text-sm text-ink focus:outline-none focus:border-accentGold">
+                            <!-- Populated dynamically -->
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Items Section in Modal -->
+                <div class="border-t border-editorialBorder pt-5 mb-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="serif-title text-lg text-ink">Clothing Pieces (<span id="modalItemCount">0</span>)</h3>
+                        <button type="button" onclick="addItemToModalList()" class="text-xs uppercase font-semibold text-accentGold hover:text-ink transition tracking-wider flex items-center gap-1">
+                            <i class="fa-solid fa-plus"></i> Add Piece
+                        </button>
+                    </div>
+
+                    <div id="modalItemsContainer" class="space-y-4 max-h-80 overflow-y-auto pr-1">
+                        <!-- Dynamic Item Input Cards -->
+                    </div>
+                </div>
+
+                <!-- Modal Action Buttons -->
+                <div class="flex items-center justify-end gap-3 border-t border-editorialBorder pt-5">
+                    <button type="button" onclick="closeModal('outfitModal')" class="px-5 py-2.5 border border-editorialBorder text-xs uppercase tracking-widest text-muted hover:text-ink transition font-medium">
+                        Cancel
+                    </button>
+                    <button type="submit" class="px-6 py-2.5 bg-ink text-cream hover:bg-accentDark text-xs uppercase tracking-widest font-semibold transition">
+                        Save Outfit
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 2. QUICK ADD ITEM DIRECTLY TO DAY MODAL -->
+    <div id="addItemModal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden p-4">
+        <div class="bg-card border border-editorialBorder w-full max-w-md p-6 relative shadow-2xl">
+            <button onclick="closeModal('addItemModal')" class="absolute top-5 right-5 text-muted hover:text-ink text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <span class="text-xs uppercase tracking-widest text-accentGold font-semibold block mb-1">Add Piece</span>
+            <h2 class="serif-title text-2xl text-ink mb-5">Add Clothing Piece</h2>
+
+            <form id="quickAddItemForm" onsubmit="handleQuickAddItem(event)">
+                <input type="hidden" id="quickAddOutfitId" value="">
+
+                <div class="space-y-4 mb-6">
+                    <div>
+                        <label class="block text-xs uppercase tracking-wider text-muted mb-1 font-medium">Item Name *</label>
+                        <input type="text" id="quickItemName" required placeholder="e.g. Silk Cream Blouse" class="w-full bg-cream border border-editorialBorder px-3.5 py-2 text-sm text-ink focus:outline-none focus:border-accentGold">
+                    </div>
+
+                    <div>
+                        <label class="block text-xs uppercase tracking-wider text-muted mb-1 font-medium">Category *</label>
+                        <select id="quickItemCategory" required class="w-full bg-cream border border-editorialBorder px-3.5 py-2 text-sm text-ink focus:outline-none focus:border-accentGold">
+                            <option value="Tops">Tops</option>
+                            <option value="Bottoms">Bottoms</option>
+                            <option value="Dresses">Dresses</option>
+                            <option value="Outerwear">Outerwear</option>
+                            <option value="Shoes">Shoes</option>
+                            <option value="Bags">Bags</option>
+                            <option value="Jewelry">Jewelry</option>
+                            <option value="Accessories">Accessories</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs uppercase tracking-wider text-muted mb-1 font-medium">Image Upload / Preset</label>
+                        <input type="file" id="quickItemImageFile" accept="image/*" onchange="handleImageFileUpload(event, 'quickItemPreview')" class="w-full text-xs text-muted file:mr-4 file:py-2 file:px-4 file:border-0 file:text-xs file:font-semibold file:bg-cream file:text-ink hover:file:bg-editorialBorder cursor-pointer">
+                        <input type="hidden" id="quickItemImageData" value="">
+                        
+                        <div class="mt-3 flex items-center gap-3">
+                            <div class="w-16 h-16 border border-editorialBorder bg-cream flex items-center justify-center p-1 overflow-hidden" id="quickItemPreviewBox">
+                                <img id="quickItemPreview" src="" alt="" class="max-h-full max-w-full object-contain hidden">
+                                <i class="fa-solid fa-shirt text-muted text-xl" id="quickItemPreviewPlaceholder"></i>
+                            </div>
+                            <div class="text-xs text-muted">
+                                Upload image or leave empty for styled category icon cutout.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-3 border-t border-editorialBorder pt-4">
+                    <button type="button" onclick="closeModal('addItemModal')" class="px-4 py-2 border border-editorialBorder text-xs uppercase tracking-wider text-muted hover:text-ink">Cancel</button>
+                    <button type="submit" class="px-5 py-2 bg-ink text-cream hover:bg-accentDark text-xs uppercase tracking-widest font-semibold">Add Piece</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 3. SURPRISE ME / RANDOMIZER MODAL -->
+    <div id="randomizerModal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden p-4">
+        <div class="bg-card border border-editorialBorder w-full max-w-lg p-6 sm:p-8 relative shadow-2xl text-center">
+            <button onclick="closeModal('randomizerModal')" class="absolute top-5 right-5 text-muted hover:text-ink text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <i class="fa-solid fa-wand-magic-sparkles text-accentGold text-3xl mb-3 block"></i>
+            <span class="text-xs uppercase tracking-widest text-accentGold font-semibold block mb-1">Stylist Recommendation</span>
+            <h2 class="serif-title text-2xl sm:text-3xl text-ink mb-2" id="randomOutfitTitle">Soft Girl Tuesday</h2>
+            <p class="text-xs text-muted uppercase tracking-wider mb-6" id="randomOutfitDay">Assigned to Tuesday</p>
+
+            <!-- Display items in random look -->
+            <div id="randomOutfitItemsGrid" class="grid grid-cols-2 sm:grid-cols-3 gap-3 p-4 bg-cream border border-editorialBorder mb-6 min-h-[140px] items-center">
+                <!-- Items inserted dynamically -->
+            </div>
+
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button onclick="triggerSurpriseMe()" class="w-full sm:w-auto px-5 py-2.5 border border-editorialBorder text-xs uppercase tracking-widest font-semibold text-ink hover:border-accentGold transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> Spin Again
+                </button>
+                <button onclick="closeModal('randomizerModal')" class="w-full sm:w-auto px-6 py-2.5 bg-ink text-cream text-xs uppercase tracking-widest font-semibold">
+                    Love This Look
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. MANAGE DAYS MODAL -->
+    <div id="manageDaysModal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden p-4">
+        <div class="bg-card border border-editorialBorder w-full max-w-md p-6 relative shadow-2xl">
+            <button onclick="closeModal('manageDaysModal')" class="absolute top-5 right-5 text-muted hover:text-ink text-lg">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+
+            <span class="text-xs uppercase tracking-widest text-accentGold font-semibold block mb-1">Custom Planner</span>
+            <h2 class="serif-title text-2xl text-ink mb-4">Manage Days & Columns</h2>
+
+            <div class="space-y-3 max-h-64 overflow-y-auto pr-1 mb-4" id="daysListContainer">
+                <!-- Editable days list rendered here -->
+            </div>
+
+            <div class="flex gap-2 mb-6">
+                <input type="text" id="newDayInput" placeholder="Add custom day (e.g. Weekend/Date Night)" class="flex-grow bg-cream border border-editorialBorder px-3 py-2 text-xs text-ink focus:outline-none focus:border-accentGold">
+                <button onclick="addNewCustomDay()" class="px-4 py-2 bg-ink text-cream text-xs uppercase font-semibold tracking-wider hover:bg-accentDark">Add</button>
+            </div>
+
+            <div class="flex justify-end border-t border-editorialBorder pt-4">
+                <button onclick="closeModal('manageDaysModal')" class="px-5 py-2 bg-accentGold text-white text-xs uppercase tracking-widest font-semibold">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. CONFIRMATION DIALOG MODAL -->
+    <div id="confirmModal" class="fixed inset-0 z-50 flex items-center justify-center modal-backdrop hidden p-4">
+        <div class="bg-card border border-editorialBorder w-full max-w-sm p-6 text-center shadow-2xl relative">
+            <i class="fa-solid fa-triangle-exclamation text-3xl text-accentGold mb-3 block"></i>
+            <h3 class="serif-title text-xl text-ink mb-2" id="confirmTitle">Delete Outfit?</h3>
+            <p class="text-xs text-muted mb-6" id="confirmMessage">This action cannot be undone.</p>
+            
+            <div class="flex justify-center gap-3">
+                <button onclick="closeModal('confirmModal')" class="px-4 py-2 border border-editorialBorder text-xs uppercase tracking-wider text-muted hover:text-ink">Cancel</button>
+                <button id="confirmActionBtn" class="px-5 py-2 bg-red-800 text-white text-xs uppercase tracking-widest font-semibold hover:bg-red-900">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /* ==========================================================================
+           STATE MANAGEMENT & DEFAULT DATA
+           ========================================================================== */
+
+        // Default Days Structure
+        const DEFAULT_DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+        // High Quality Styled Vector Outfits / Preset Cutouts Generator (SVG Data URLs)
+        function createCutoutSvg(type, color = "#2C2723") {
+            let svgContent = '';
+            switch(type) {
+                case 'Tops':
+                    svgContent = `<path d="M12 4L19 7L16 11L14 9V20H10V9L8 11L5 7L12 4Z" fill="${color}" opacity="0.85"/>`;
+                    break;
+                case 'Bottoms':
+                    svgContent = `<path d="M7 4H17L18 10L16.5 21H12.5L12 12L11.5 12L11 21H7L5.5 10L7 4Z" fill="${color}" opacity="0.85"/>`;
+                    break;
+                case 'Dresses':
+                    svgContent = `<path d="M10 3L14 3L16 7L18 21H6L8 7L10 3Z" fill="${color}" opacity="0.85"/>`;
+                    break;
+                case 'Outerwear':
+                    svgContent = `<path d="M5 5L12 3L19 5L20 12L17 11V21H7V11L4 12L5 5Z" fill="${color}" opacity="0.85"/>`;
+                    break;
+                case 'Shoes':
+                    svgContent = `<path d="M4 16L9 11L14 13L20 10V18H4V16Z" fill="${color}" opacity="0.85"/>`;
+                    break;
+                case 'Bags':
+                    svgContent = `<path d="M8 8V5C8 3.5 9.5 2 12 2C14.5 2 16 3.5 16 5V8H19V20H5V8H8ZM10 8H14V5C14 4 13.2 3.5 12 3.5C10.8 3.5 10 4 10 5V8Z" fill="${color}" opacity="0.85"/>`;
+                    break;
+                case 'Jewelry':
+                case 'Accessories':
+                    svgContent = `<circle cx="12" cy="12" r="7" stroke="${color}" stroke-width="2" fill="none"/><circle cx="12" cy="7" r="2" fill="${color}"/>`;
+                    break;
+                default:
+                    svgContent = `<rect x="6" y="6" width="12" height="12" fill="${color}" opacity="0.85"/>`;
+            }
+            const fullSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="100" height="100">${svgContent}</svg>`;
+            return `data:image/svg+xml;utf8,${encodeURIComponent(fullSvg)}`;
+        }
+
+        // Rich Pre-populated Sample Outfits
+        const INITIAL_OUTFITS = [
+            {
+                id: "outfit-1",
+                name: "Soft Blue Editorial",
+                day: "Monday",
+                favorite: true,
+                items: [
+                    { id: "i1", name: "Oversized Blue Cotton Shirt", category: "Tops", image: createCutoutSvg("Tops", "#4A6984") },
+                    { id: "i2", name: "Wide-Leg Off-White Trousers", category: "Bottoms", image: createCutoutSvg("Bottoms", "#D9D2C9") },
+                    { id: "i3", name: "Leather Shoulder Tote", category: "Bags", image: createCutoutSvg("Bags", "#362A22") },
+                    { id: "i4", name: "Minimalist Loafers", category: "Shoes", image: createCutoutSvg("Shoes", "#171515") }
+                ]
+            },
+            {
+                id: "outfit-2",
+                name: "Gallery Walk & Coffee",
+                day: "Tuesday",
+                favorite: false,
+                items: [
+                    { id: "i5", name: "Cashmere Turtleneck Sweater", category: "Tops", image: createCutoutSvg("Tops", "#77716C") },
+                    { id: "i6", name: "Pleated Midi Skirt", category: "Bottoms", image: createCutoutSvg("Bottoms", "#2C2723") },
+                    { id: "i7", name: "Gold Hoop Earrings", category: "Jewelry", image: createCutoutSvg("Jewelry", "#8C7355") }
+                ]
+            },
+            {
+                id: "outfit-3",
+                name: "Midweek Silk Minimalism",
+                day: "Wednesday",
+                favorite: true,
+                items: [
+                    { id: "i8", name: "Champagne Slip Dress", category: "Dresses", image: createCutoutSvg("Dresses", "#C8BCA8") },
+                    { id: "i9", name: "Tailored Blazer", category: "Outerwear", image: createCutoutSvg("Outerwear", "#171515") },
+                    { id: "i10", name: "Strappy Heel Sandals", category: "Shoes", image: createCutoutSvg("Shoes", "#171515") }
+                ]
+            },
+            {
+                id: "outfit-4",
+                name: "Studio & Design Day",
+                day: "Thursday",
+                favorite: false,
+                items: [
+                    { id: "i11", name: "Structured Linen Trench", category: "Outerwear", image: createCutoutSvg("Outerwear", "#B0A494") },
+                    { id: "i12", name: "Straight Indigo Jeans", category: "Bottoms", image: createCutoutSvg("Bottoms", "#2B3A4A") },
+                    { id: "i13", name: "White Leather Sneakers", category: "Shoes", image: createCutoutSvg("Shoes", "#EAE6E1") }
+                ]
+            },
+            {
+                id: "outfit-5",
+                name: "Sunset Aperitivo",
+                day: "Friday",
+                favorite: true,
+                items: [
+                    { id: "i14", name: "Black Silk Cami Top", category: "Tops", image: createCutoutSvg("Tops", "#171515") },
+                    { id: "i15", name: "Tailored Cream Pants", category: "Bottoms", image: createCutoutSvg("Bottoms", "#F0EBE1") },
+                    { id: "i16", name: "Woven Clutch Bag", category: "Bags", image: createCutoutSvg("Bags", "#8C7355") }
+                ]
+            },
+            {
+                id: "outfit-6",
+                name: "Saturday Market & Brunch",
+                day: "Saturday",
+                favorite: false,
+                items: [
+                    { id: "i17", name: "Linen Button-Down Dress", category: "Dresses", image: createCutoutSvg("Dresses", "#8CA08C") },
+                    { id: "i18", name: "Straw Basket Tote", category: "Bags", image: createCutoutSvg("Bags", "#C2A878") }
+                ]
+            },
+            {
+                id: "outfit-7",
+                name: "Cozy Sunday Reading",
+                day: "Sunday",
+                favorite: false,
+                items: [
+                    { id: "i19", name: "Oversized Knit Cardigan", category: "Outerwear", image: createCutoutSvg("Outerwear", "#D1C8BC") },
+                    { id: "i20", name: "Soft Cotton Lounge Shorts", category: "Bottoms", image: createCutoutSvg("Bottoms", "#A89F91") }
+                ]
+            }
+        ];
+
+        // State Application Stores
+        let state = {
+            days: [...DEFAULT_DAYS],
+            outfits: [],
+            filterCategory: 'ALL',
+            showFavoritesOnly: false,
+            activeDraggedItem: null
+        };
+
+        /* ==========================================================================
+           INITIALIZATION & LOCAL STORAGE PERSISTENCE
+           ========================================================================== */
+
+        function initApp() {
+            const savedDays = localStorage.getItem('weekly_outfit_days');
+            const savedOutfits = localStorage.getItem('weekly_outfit_data');
+
+            if (savedDays) {
+                try { state.days = JSON.parse(savedDays); } catch (e) { state.days = [...DEFAULT_DAYS]; }
+            } else {
+                state.days = [...DEFAULT_DAYS];
+            }
+
+            if (savedOutfits) {
+                try { state.outfits = JSON.parse(savedOutfits); } catch (e) { state.outfits = [...INITIAL_OUTFITS]; }
+            } else {
+                state.outfits = [...INITIAL_OUTFITS];
+            }
+
+            saveToStorage();
+            renderGrid();
+            updateStats();
+        }
+
+        function saveToStorage() {
+            try {
+                localStorage.setItem('weekly_outfit_days', JSON.stringify(state.days));
+                localStorage.setItem('weekly_outfit_data', JSON.stringify(state.outfits));
+            } catch (err) {
+                console.warn("Storage warning: Could not save data", err);
+            }
+        }
+
+        /* ==========================================================================
+           RENDERING & GRID UI
+           ========================================================================== */
+
+        function renderGrid() {
+            const grid = document.getElementById('weeklyGrid');
+            const emptyState = document.getElementById('emptyState');
+            grid.innerHTML = '';
+
+            let renderedCardCount = 0;
+
+            // Loop through defined days
+            state.days.forEach(dayName => {
+                // Find outfits assigned to this day
+                const dayOutfits = state.outfits.filter(o => o.day.toLowerCase() === dayName.toLowerCase());
+
+                // Apply Filters (Favorites / Category)
+                const filteredOutfits = dayOutfits.filter(outfit => {
+                    if (state.showFavoritesOnly && !outfit.favorite) return false;
+                    if (state.filterCategory !== 'ALL') {
+                        return outfit.items.some(i => i.category === state.filterCategory);
+                    }
+                    return true;
+                });
+
+                // If filter is active and no outfit matches, skip card rendering
+                if ((state.showFavoritesOnly || state.filterCategory !== 'ALL') && filteredOutfits.length === 0) {
+                    return;
+                }
+
+                renderedCardCount++;
+
+                // Build Day Column Card
+                const dayCard = document.createElement('div');
+                dayCard.className = 'editorial-card flex flex-col justify-between p-5 sm:p-6 relative';
+                dayCard.dataset.day = dayName;
+
+                // Drag over handlers for outfits
+                dayCard.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dayCard.classList.add('drag-over');
+                });
+                dayCard.addEventListener('dragleave', () => {
+                    dayCard.classList.remove('drag-over');
+                });
+                dayCard.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dayCard.classList.remove('drag-over');
+                    if (state.activeDraggedItem) {
+                        moveItemToDay(state.activeDraggedItem, dayName);
+                    }
+                });
+
+                // Day Title Header with Inline Editing
+                let outfitsHTML = '';
+
+                if (filteredOutfits.length === 0) {
+                    // Empty state for day
+                    outfitsHTML = `
+                        <div class="py-10 text-center border border-dashed border-editorialBorder my-3">
+                            <p class="text-xs text-muted uppercase tracking-wider mb-2">No outfit planned</p>
+                            <button onclick="openNewOutfitModal('${dayName}')" class="text-xs text-accentGold font-semibold hover:underline uppercase tracking-wider">
+                                + Add Look
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    outfitsHTML = filteredOutfits.map(outfit => renderOutfitContent(outfit)).join('<div class="my-4 border-t border-editorialBorder"></div>');
+                }
+
+                dayCard.innerHTML = `
+                    <div>
+                        <!-- Day Card Header -->
+                        <div class="flex items-center justify-between border-b border-editorialBorder pb-3 mb-4">
+                            <div class="flex items-center gap-2">
+                                <h2 class="serif-title text-xl font-medium tracking-tight text-ink uppercase" contenteditable="true" onblur="handleDayRename('${dayName}', this.innerText)" title="Click to rename day">
+                                    ${dayName}
+                                </h2>
+                                <i class="fa-solid fa-pen text-[10px] text-muted opacity-40"></i>
+                            </div>
+                            <div class="flex items-center gap-1.5">
+                                <button onclick="openNewOutfitModal('${dayName}')" class="text-xs text-muted hover:text-ink px-2 py-1 border border-editorialBorder hover:border-accentGold transition" title="Add Outfit to this Day">
+                                    <i class="fa-solid fa-plus"></i> Look
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Outfit Content Area -->
+                        ${outfitsHTML}
+                    </div>
+
+                    <!-- Bottom Day Footer Actions -->
+                    <div class="mt-4 pt-3 border-t border-editorialBorder/60 flex items-center justify-between text-[11px] text-muted">
+                        <span>${dayOutfits.length} ${dayOutfits.length === 1 ? 'Look' : 'Looks'}</span>
+                        <button onclick="quickDuplicateDay('${dayName}')" class="hover:text-ink tracking-wider uppercase font-medium">
+                            <i class="fa-regular fa-copy"></i> Duplicate Day
+                        </button>
+                    </div>
+                `;
+
+                grid.appendChild(dayCard);
+            });
+
+            if (renderedCardCount === 0) {
+                emptyState.classList.remove('hidden');
+            } else {
+                emptyState.classList.add('hidden');
+            }
+        }
+
+        function renderOutfitContent(outfit) {
+            // Filter items if category filter is active
+            const displayItems = state.filterCategory === 'ALL' 
+                ? outfit.items 
+                : outfit.items.filter(i => i.category === state.filterCategory);
+
+            const itemsCollageHTML = displayItems.map((item, idx) => `
+                <div class="item-card group relative bg-cream border border-editorialBorder p-2.5 flex flex-col items-center justify-between h-36"
+                     draggable="true" 
+                     ondragstart="handleDragStart(event, '${outfit.id}', '${item.id}')"
+                     ondragend="handleDragEnd(event)">
+                    
+                    <span class="text-[9px] uppercase tracking-wider text-muted font-semibold self-start bg-card px-1.5 py-0.5 border border-editorialBorder/50">
+                        ${item.category}
+                    </span>
+
+                    <div class="w-full flex-grow flex items-center justify-center p-1 my-1 overflow-hidden">
+                        <img src="${item.image}" alt="${item.name}" class="max-h-20 max-w-full object-contain filter drop-shadow-sm transition-transform duration-300 group-hover:scale-105">
+                    </div>
+
+                    <p class="text-[11px] text-ink font-medium truncate w-full text-center tracking-tight" title="${item.name}">
+                        ${item.name}
+                    </p>
+
+                    <!-- Quick Item Delete Hover Button -->
+                    <button onclick="deleteItemDirect('${outfit.id}', '${item.id}')" class="absolute top-1.5 right-1.5 text-muted hover:text-red-700 opacity-0 group-hover:opacity-100 transition p-1" title="Remove piece">
+                        <i class="fa-solid fa-xmark text-xs"></i>
+                    </button>
+                </div>
+            `).join('');
+
+            return `
+                <div class="outfit-block" id="outfit-block-${outfit.id}">
+                    <!-- Outfit Title & Heart -->
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <h3 class="serif-title text-lg text-ink font-semibold">${outfit.name}</h3>
+                        </div>
+                        <button onclick="toggleFavorite('${outfit.id}')" class="p-1.5 text-accentGold hover:scale-110 transition">
+                            <i class="${outfit.favorite ? 'fa-solid text-accentGold' : 'fa-regular text-muted hover:text-accentGold'} fa-heart text-base"></i>
+                        </button>
+                    </div>
+
+                    <!-- Items Grid / Collage -->
+                    <div class="grid grid-cols-2 gap-2.5 mb-3.5">
+                        ${itemsCollageHTML.length > 0 ? itemsCollageHTML : '<p class="col-span-2 text-xs text-muted italic py-3 text-center">No pieces in this look yet.</p>'}
+                    </div>
+
+                    <!-- Outfit Toolbar Actions -->
+                    <div class="flex flex-wrap items-center justify-between gap-1 text-xs text-muted pt-2 border-t border-editorialBorder/40">
+                        <div class="flex items-center gap-2">
+                            <button onclick="openEditOutfitModal('${outfit.id}')" class="hover:text-ink flex items-center gap-1">
+                                <i class="fa-solid fa-pen-to-square text-[11px]"></i> Edit
+                            </button>
+                            <span>•</span>
+                            <button onclick="openQuickAddItemModal('${outfit.id}')" class="hover:text-ink flex items-center gap-1">
+                                <i class="fa-solid fa-plus text-[11px]"></i> Piece
+                            </button>
+                            <span>•</span>
+                            <button onclick="duplicateOutfit('${outfit.id}')" class="hover:text-ink flex items-center gap-1">
+                                <i class="fa-regular fa-clone text-[11px]"></i> Copy
+                            </button>
+                        </div>
+                        
+                        <button onclick="confirmDeleteOutfit('${outfit.id}')" class="hover:text-red-700 p-1" title="Delete Outfit">
+                            <i class="fa-regular fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateStats() {
+            const totalOutfits = state.outfits.length;
+            const totalItems = state.outfits.reduce((acc, o) => acc + o.items.length, 0);
+            const favorites = state.outfits.filter(o => o.favorite).length;
+
+            document.getElementById('statTotalOutfits').innerText = totalOutfits;
+            document.getElementById('statTotalItems').innerText = totalItems;
+            document.getElementById('statFavorites').innerText = favorites;
+        }
+
+        /* ==========================================================================
+           DRAG AND DROP ACTIONS
+           ========================================================================== */
+
+        function handleDragStart(e, outfitId, itemId) {
+            state.activeDraggedItem = { outfitId, itemId };
+            e.currentTarget.classList.add('dragging');
+            e.dataTransfer.setData('text/plain', JSON.stringify({ outfitId, itemId }));
+        }
+
+        function handleDragEnd(e) {
+            e.currentTarget.classList.remove('dragging');
+            state.activeDraggedItem = null;
+        }
+
+        function moveItemToDay(itemData, targetDay) {
+            const sourceOutfit = state.outfits.find(o => o.id === itemData.outfitId);
+            if (!sourceOutfit) return;
+
+            const itemIndex = sourceOutfit.items.findIndex(i => i.id === itemData.itemId);
+            if (itemIndex === -1) return;
+
+            const item = sourceOutfit.items[itemIndex];
+
+            // Find target outfit on the destination day or create one
+            let targetOutfit = state.outfits.find(o => o.day.toLowerCase() === targetDay.toLowerCase());
+
+            if (!targetOutfit) {
+                targetOutfit = {
+                    id: "outfit-" + Date.now(),
+                    name: `${targetDay} Look`,
+                    day: targetDay,
+                    favorite: false,
+                    items: []
+                };
+                state.outfits.push(targetOutfit);
+            }
+
+            // Move item
+            sourceOutfit.items.splice(itemIndex, 1);
+            targetOutfit.items.push(item);
+
+            saveToStorage();
+            renderGrid();
+            updateStats();
+        }
+
+        /* ==========================================================================
+           MODAL HANDLERS & FORM LOGIC
+           ========================================================================== */
+
+        let modalItemsTemp = [];
+
+        function openModal(id) {
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.add('hidden');
+        }
+
+        function populateDayDropdowns() {
+            const selects = [document.getElementById('outfitDayInput')];
+            selects.forEach(select => {
+                if (!select) return;
+                select.innerHTML = state.days.map(d => `<option value="${d}">${d}</option>`).join('');
+            });
+        }
+
+        function openNewOutfitModal(defaultDay = null) {
+            populateDayDropdowns();
+            document.getElementById('editOutfitId').value = '';
+            document.getElementById('outfitModalTitle').innerText = 'New Outfit';
+            document.getElementById('outfitModalSubtitle').innerText = 'Create Look';
+            document.getElementById('outfitNameInput').value = '';
+            
+            if (defaultDay) {
+                document.getElementById('outfitDayInput').value = defaultDay;
+            }
+
+            modalItemsTemp = [
+                { id: "temp-1", name: "", category: "Tops", image: createCutoutSvg("Tops") }
+            ];
+            renderModalItemsList();
+            openModal('outfitModal');
+        }
+
+        function openEditOutfitModal(outfitId) {
+            populateDayDropdowns();
+            const outfit = state.outfits.find(o => o.id === outfitId);
+            if (!outfit) return;
+
+            document.getElementById('editOutfitId').value = outfit.id;
+            document.getElementById('outfitModalTitle').innerText = 'Edit Outfit';
+            document.getElementById('outfitModalSubtitle').innerText = 'Update Look';
+            document.getElementById('outfitNameInput').value = outfit.name;
+            document.getElementById('outfitDayInput').value = outfit.day;
+
+            modalItemsTemp = outfit.items.map(i => ({ ...i }));
+            renderModalItemsList();
+            openModal('outfitModal');
+        }
+
+        function renderModalItemsList() {
+            const container = document.getElementById('modalItemsContainer');
+            document.getElementById('modalItemCount').innerText = modalItemsTemp.length;
+
+            container.innerHTML = modalItemsTemp.map((item, idx) => `
+                <div class="bg-cream border border-editorialBorder p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                    <div class="flex items-center gap-3 w-full sm:w-auto">
+                        <div class="w-12 h-12 border border-editorialBorder bg-card flex items-center justify-center p-1 flex-shrink-0">
+                            <img src="${item.image || createCutoutSvg(item.category)}" alt="" class="max-h-full max-w-full object-contain">
+                        </div>
+                        <div class="flex-grow">
+                            <input type="text" value="${item.name}" placeholder="Item name (e.g. Silk Blouse)" 
+                                   onchange="updateModalItemField(${idx}, 'name', this.value)" 
+                                   class="w-full bg-card border border-editorialBorder px-2.5 py-1 text-xs text-ink focus:outline-none focus:border-accentGold mb-1">
+                            <div class="flex items-center gap-2">
+                                <select onchange="updateModalItemField(${idx}, 'category', this.value)" class="bg-card border border-editorialBorder px-2 py-0.5 text-[11px] text-ink">
+                                    ${['Tops','Bottoms','Dresses','Outerwear','Shoes','Bags','Jewelry','Accessories','Other'].map(cat => 
+                                        `<option value="${cat}" ${item.category === cat ? 'selected' : ''}>${cat}</option>`
+                                    ).join('')}
+                                </select>
+                                <label class="text-[10px] uppercase text-accentGold cursor-pointer hover:underline font-semibold">
+                                    Image
+                                    <input type="file" accept="image/*" class="hidden" onchange="handleModalItemImageUpload(event, ${idx})">
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="button" onclick="removeModalItem(${idx})" class="text-muted hover:text-red-700 text-xs self-end sm:self-center p-1">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        function addItemToModalList() {
+            modalItemsTemp.push({
+                id: "temp-" + Date.now(),
+                name: "",
+                category: "Tops",
+                image: createCutoutSvg("Tops")
+            });
+            renderModalItemsList();
+        }
+
+        function removeModalItem(idx) {
+            modalItemsTemp.splice(idx, 1);
+            renderModalItemsList();
+        }
+
+        function updateModalItemField(idx, field, value) {
+            modalItemsTemp[idx][field] = value;
+            if (field === 'category' && (!modalItemsTemp[idx].image || modalItemsTemp[idx].image.startsWith('data:image/svg'))) {
+                modalItemsTemp[idx].image = createCutoutSvg(value);
+            }
+            renderModalItemsList();
+        }
+
+        function handleModalItemImageUpload(event, idx) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                modalItemsTemp[idx].image = e.target.result;
+                renderModalItemsList();
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleSaveOutfit(e) {
+            e.preventDefault();
+            const editId = document.getElementById('editOutfitId').value;
+            const name = document.getElementById('outfitNameInput').value.trim();
+            const day = document.getElementById('outfitDayInput').value;
+
+            if (!name) return;
+
+            // Ensure items have labels if empty
+            const processedItems = modalItemsTemp.map((item, i) => ({
+                id: item.id || "item-" + Date.now() + "-" + i,
+                name: item.name.trim() || `${item.category} Piece`,
+                category: item.category,
+                image: item.image || createCutoutSvg(item.category)
+            }));
+
+            if (editId) {
+                // Update existing
+                const outfit = state.outfits.find(o => o.id === editId);
+                if (outfit) {
+                    outfit.name = name;
+                    outfit.day = day;
+                    outfit.items = processedItems;
+                }
+            } else {
+                // Create new
+                const newOutfit = {
+                    id: "outfit-" + Date.now(),
+                    name: name,
+                    day: day,
+                    favorite: false,
+                    items: processedItems
+                };
+                state.outfits.push(newOutfit);
+            }
+
+            saveToStorage();
+            closeModal('outfitModal');
+            renderGrid();
+            updateStats();
+        }
+
+        /* ==========================================================================
+           QUICK ADD ITEM LOGIC
+           ========================================================================== */
+
+        function openQuickAddItemModal(outfitId) {
+            document.getElementById('quickAddOutfitId').value = outfitId;
+            document.getElementById('quickItemName').value = '';
+            document.getElementById('quickItemImageData').value = '';
+            document.getElementById('quickItemPreview').src = '';
+            document.getElementById('quickItemPreview').classList.add('hidden');
+            document.getElementById('quickItemPreviewPlaceholder').classList.remove('hidden');
+            openModal('addItemModal');
+        }
+
+        function handleImageFileUpload(e, previewImgId) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                const imgData = evt.target.result;
+                document.getElementById('quickItemImageData').value = imgData;
+                const preview = document.getElementById(previewImgId);
+                preview.src = imgData;
+                preview.classList.remove('hidden');
+                document.getElementById('quickItemPreviewPlaceholder').classList.add('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function handleQuickAddItem(e) {
+            e.preventDefault();
+            const outfitId = document.getElementById('quickAddOutfitId').value;
+            const name = document.getElementById('quickItemName').value.trim();
+            const category = document.getElementById('quickItemCategory').value;
+            const customImg = document.getElementById('quickItemImageData').value;
+
+            const outfit = state.outfits.find(o => o.id === outfitId);
+            if (!outfit) return;
+
+            outfit.items.push({
+                id: "item-" + Date.now(),
+                name: name,
+                category: category,
+                image: customImg || createCutoutSvg(category)
+            });
+
+            saveToStorage();
+            closeModal('addItemModal');
+            renderGrid();
+            updateStats();
+        }
+
+        function deleteItemDirect(outfitId, itemId) {
+            const outfit = state.outfits.find(o => o.id === outfitId);
+            if (!outfit) return;
+            outfit.items = outfit.items.filter(i => i.id !== itemId);
+            saveToStorage();
+            renderGrid();
+            updateStats();
+        }
+
+        /* ==========================================================================
+           SURPRISE ME / RANDOMIZER LOGIC
+           ========================================================================== */
+
+        function triggerSurpriseMe() {
+            if (state.outfits.length === 0) return;
+
+            // Pick a random outfit from state or build a random combo
+            const randomOutfit = state.outfits[Math.floor(Math.random() * state.outfits.length)];
+
+            document.getElementById('randomOutfitTitle').innerText = randomOutfit.name;
+            document.getElementById('randomOutfitDay').innerText = `Assigned to ${randomOutfit.day}`;
+
+            const itemsContainer = document.getElementById('randomOutfitItemsGrid');
+            itemsContainer.innerHTML = randomOutfit.items.map(item => `
+                <div class="p-2 border border-editorialBorder bg-card flex flex-col items-center justify-center text-center">
+                    <img src="${item.image}" alt="" class="h-16 object-contain mb-1">
+                    <span class="text-[10px] font-semibold text-ink truncate w-full">${item.name}</span>
+                    <span class="text-[9px] text-muted uppercase">${item.category}</span>
+                </div>
+            `).join('');
+
+            openModal('randomizerModal');
+        }
+
+        /* ==========================================================================
+           CUSTOM DAYS MANAGEMENT
+           ========================================================================== */
+
+        function openManageDaysModal() {
+            renderDaysManagementList();
+            openModal('manageDaysModal');
+        }
+
+        function renderDaysManagementList() {
+            const container = document.getElementById('daysListContainer');
+            container.innerHTML = state.days.map((day, idx) => `
+                <div class="flex items-center justify-between bg-cream border border-editorialBorder px-3 py-2 text-xs">
+                    <span class="font-medium text-ink">${day}</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick="moveDayOrder(${idx}, -1)" ${idx === 0 ? 'disabled class="opacity-30"' : ''} title="Move Up">
+                            <i class="fa-solid fa-arrow-up text-muted"></i>
+                        </button>
+                        <button onclick="moveDayOrder(${idx}, 1)" ${idx === state.days.length - 1 ? 'disabled class="opacity-30"' : ''} title="Move Down">
+                            <i class="fa-solid fa-arrow-down text-muted"></i>
+                        </button>
+                        <button onclick="deleteCustomDay('${day}')" class="text-muted hover:text-red-700 ml-2">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function addNewCustomDay() {
+            const input = document.getElementById('newDayInput');
+            const dayName = input.value.trim();
+            if (!dayName) return;
+            if (state.days.some(d => d.toLowerCase() === dayName.toLowerCase())) {
+                alert("This day or column already exists.");
+                return;
+            }
+            state.days.push(dayName);
+            input.value = '';
+            saveToStorage();
+            renderDaysManagementList();
+            renderGrid();
+        }
+
+        function deleteCustomDay(dayName) {
+            if (state.days.length <= 1) {
+                alert("You must keep at least one day column.");
+                return;
+            }
+            state.days = state.days.filter(d => d.toLowerCase() !== dayName.toLowerCase());
+            saveToStorage();
+            renderDaysManagementList();
+            renderGrid();
+        }
+
+        function moveDayOrder(idx, direction) {
+            const newIdx = idx + direction;
+            if (newIdx < 0 || newIdx >= state.days.length) return;
+            const temp = state.days[idx];
+            state.days[idx] = state.days[newIdx];
+            state.days[newIdx] = temp;
+            saveToStorage();
+            renderDaysManagementList();
+            renderGrid();
+        }
+
+        function handleDayRename(oldName, newName) {
+            const trimmed = newName.trim();
+            if (!trimmed || trimmed === oldName) return;
+
+            // Update day in state.days
+            const idx = state.days.findIndex(d => d.toLowerCase() === oldName.toLowerCase());
+            if (idx !== -1) {
+                state.days[idx] = trimmed;
+            }
+
+            // Update outfits belonging to old day name
+            state.outfits.forEach(o => {
+                if (o.day.toLowerCase() === oldName.toLowerCase()) {
+                    o.day = trimmed;
+                }
+            });
+
+            saveToStorage();
+            renderGrid();
+        }
+
+        /* ==========================================================================
+           OUTFIT DUPLICATION & FAVORITES
+           ========================================================================== */
+
+        function toggleFavorite(outfitId) {
+            const outfit = state.outfits.find(o => o.id === outfitId);
+            if (outfit) {
+                outfit.favorite = !outfit.favorite;
+                saveToStorage();
+                renderGrid();
+                updateStats();
+            }
+        }
+
+        function duplicateOutfit(outfitId) {
+            const original = state.outfits.find(o => o.id === outfitId);
+            if (!original) return;
+
+            const copy = {
+                id: "outfit-" + Date.now(),
+                name: `${original.name} (Copy)`,
+                day: original.day,
+                favorite: false,
+                items: original.items.map(i => ({ ...i, id: "item-" + Date.now() + "-" + Math.random().toString(36).substr(2, 4) }))
+            };
+
+            state.outfits.push(copy);
+            saveToStorage();
+            renderGrid();
+            updateStats();
+        }
+
+        function quickDuplicateDay(dayName) {
+            const dayOutfits = state.outfits.filter(o => o.day.toLowerCase() === dayName.toLowerCase());
+            if (dayOutfits.length === 0) return;
+
+            dayOutfits.forEach(o => duplicateOutfit(o.id));
+        }
+
+        function confirmDeleteOutfit(outfitId) {
+            const outfit = state.outfits.find(o => o.id === outfitId);
+            if (!outfit) return;
+
+            document.getElementById('confirmTitle').innerText = `Delete "${outfit.name}"?`;
+            document.getElementById('confirmMessage').innerText = "This action cannot be undone.";
+            
+            const btn = document.getElementById('confirmActionBtn');
+            btn.onclick = function() {
+                state.outfits = state.outfits.filter(o => o.id !== outfitId);
+                saveToStorage();
+                closeModal('confirmModal');
+                renderGrid();
+                updateStats();
+            };
+
+            openModal('confirmModal');
+        }
+
+        /* ==========================================================================
+           FILTERS & SEARCH
+           ========================================================================== */
+
+        function toggleFavoritesFilter() {
+            state.showFavoritesOnly = !state.showFavoritesOnly;
+            const btn = document.getElementById('favFilterBtn');
+            const icon = document.getElementById('favFilterIcon');
+
+            if (state.showFavoritesOnly) {
+                btn.classList.add('bg-accentGold', 'text-white');
+                btn.classList.remove('bg-card', 'text-ink');
+                icon.className = 'fa-solid fa-heart text-white';
+            } else {
+                btn.classList.remove('bg-accentGold', 'text-white');
+                btn.classList.add('bg-card', 'text-ink');
+                icon.className = 'fa-regular fa-heart text-accentGold';
+            }
+
+            renderGrid();
+        }
+
+        function filterByCategory(category) {
+            state.filterCategory = category;
+            renderGrid();
+        }
+
+        function resetFilters() {
+            state.filterCategory = 'ALL';
+            state.showFavoritesOnly = false;
+            document.getElementById('categoryFilter').value = 'ALL';
+            
+            const btn = document.getElementById('favFilterBtn');
+            const icon = document.getElementById('favFilterIcon');
+            btn.classList.remove('bg-accentGold', 'text-white');
+            btn.classList.add('bg-card', 'text-ink');
+            icon.className = 'fa-regular fa-heart text-accentGold';
+
+            renderGrid();
+        }
+
+        /* ==========================================================================
+           WINDOW LOAD INVOCATION
+           ========================================================================== */
+        window.onload = function() {
+            initApp();
+        };
+    </script>
+</body>
+</html>
